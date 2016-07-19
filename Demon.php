@@ -1,10 +1,10 @@
 <?php
-
 /**
  * User: gengkang
  * Date: 16-7-19
  * Time: 下午3:41
  */
+ini_set('default_socket_timeout', -1);
 class Demon {
     /* config */
     const HOST = '127.0.0.1';
@@ -53,16 +53,11 @@ class Demon {
             print_r("异常：" . $e->getMessage());
             print_r("\n 重新链接频道.....\n");
             $this->run();
-            print_r("\n 重新链接成功.....\n");
         }
     }
 
     private function start() {
         $pid = $this->daemon();
-        $this->run();
-    }
-
-    private function onestart() {
         $this->run();
     }
 
@@ -87,8 +82,6 @@ class Demon {
             $this->stop();
         } else if ($argv[1] === 'start') {
             $this->start();
-        //} else if ($argv[1] === 'onestart') {
-            //$this->onestart();
         } else {
             $this->help($argv[0]);
         }
