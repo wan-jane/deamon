@@ -1,11 +1,12 @@
 <?php
 
+
 ini_set('default_socket_timeout', -1);
 
 /**
  * Class Demon
  */
-abstract class Demon {
+abstract class Task {
     /* config */
 
     private $process_name = 'php_task_';
@@ -19,8 +20,6 @@ abstract class Demon {
     public $pidfile;
 
     public $pidname;
-
-    private $stop = false;
 
     /**
      * @return int
@@ -61,9 +60,6 @@ abstract class Demon {
      */
     protected function run() {
         pcntl_signal_dispatch();
-        if ($this->stop) {
-            exit("进程退出\n");
-        }
     }
 
     private function restart() {
@@ -99,23 +95,21 @@ abstract class Demon {
         print <<<DOC
     使用方法：
     继承此类重写run方法，在重写时,在循环里面调用parent::run();
-    指定pid文件的名字,用一个类去管理其他的类的进程,尽量有意义并且唯一;
+    指定pid文件的名字,用来管理stop|stat|list)进程,要求有意义并且唯一;
     最后： (new yourclass)->main(\$argv)来运行你的代码;
     php your-phpfile start task_name      :启动当前脚本并设置tsak_name
     php any-your-phpfile restart task_name:重新启动task_name
     php any-your-phpfile stop task_name   :停止 task_name
     php any-your-phpfile stat task_name   :输出进程号和进程名称task_name
     php any-your-phpfile list 任意参数     :列出正在执行的类名task_name
+
 DOC;
 
     }
-
     /**
      * @param $argv
      */
     public function main($argv) {
-
-
             if (count($argv) < 3) {
                 $this->help("使用方法 :");
                 exit();
@@ -135,13 +129,17 @@ DOC;
         } else if ($argv[1] === 'restart') {
             $this->restart();
         } else if ($argv[1] === 'stat') {
-            if (is_file($this->pidfile)) {
-                posix_kill(file_get_contents($this->pidfile), SIGHUP);
-            } else {
-                print "\n-------------指定进程没有启动-----------\n";
-            }
+            $this->stat();
         } else {
             $this->help("使用方法 :");
+        }
+    }
+
+    private function stat() {
+        if (is_file($this->pidfile)) {
+            posix_kill(file_get_contents($this->pidfile), SIGHUP);
+        } else {
+            print "\n-------------指定进程没有启动-----------\n";
         }
     }
 
@@ -151,15 +149,14 @@ DOC;
     public function signoH($signo) {
         switch ($signo) {
             case SIGHUP :
-                print "\n------------运行状态------------\n";
-                print "PID : " . file_get_contents($this->pidfile . '.pid') . "\n";
-                print "CLASS_NAME : " . $this->child_class . "\n";
+                print "\n\e[32m------------运行状态------------\n";
+                print "PID : " . file_get_contents($this->pidfile) . "\n";
+                print "CLASS_NAME : " . $this->pidname . "\n";
                 print "PROCESS_NAME : " . $this->process_name . $this->pidname . "\n";
                 print "________________________________\n";
+                print "\e[0m";
                 break;
             case SIGTERM:
-                posix_kill(file_get_contents($this->pidfile . '.pid'), SIGKILL);
-                break;
             default :
               ;
         }
@@ -174,11 +171,10 @@ DOC;
             print "\033[32m$pidname\n";
         }
         print "\033[0m";
-
     }
 }
 //useage:
-class demoT extends Demon {
+class demoT extends Task {
     /**
      * @overwrite run 
      */
