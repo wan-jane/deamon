@@ -1,6 +1,6 @@
 <?php
 /**
- * User: gk
+ * User: gengkang
  * Date: 16-7-19
  * Time: 下午3:41
  */
@@ -18,16 +18,13 @@ abstract class Demon {
 
     const gid = 80;
 
+    const PID_DIR = __DIR__ . '/';
+
     public $pidfile;
 
-    public $stop = false;
+    public $pidname;
 
-    /**
-     * Demon constructor.
-     */
-    public function __construct() {
-        $this->pidfile = __DIR__ . '/' . __CLASS__ . '.pid';
-    }
+    private $stop = false;
 
     /**
      * @return int
@@ -45,10 +42,13 @@ abstract class Demon {
             exit($pid);
         } else {
             // we are the child
-            file_put_contents($this->pidfile, getmypid());
+            $i = file_put_contents($this->pidfile, getmypid());
+            if ($i === false) {
+                exit("无法写入pid文件！");
+            }
             posix_setuid(self::uid);
             posix_setgid(self::gid);
-            cli_set_process_title($this->process_name . __CLASS__);
+            cli_set_process_title($this->process_name . $this->pidname);
             //pcntl_signal(SIGKILL, [$this, 'signoH']);
             pcntl_signal(SIGHUP, [$this, 'signoH']);
             pcntl_signal(SIGTERM, [$this, 'signoH']);
@@ -99,13 +99,17 @@ abstract class Demon {
      * @param $proc
      */
     private function help($proc) {
-        printf("%s php your-class-name.php start|stop|restart|stat|help  pidfileName\n", $proc);
+        printf("%s php your-class-name.php start|stop|restart|stat|list|help taskname\n", $proc);
         print <<<DOC
-        使用：
-        继承此类重写run方法，在重写时,在循环里面调用parent::run();
-        指定pid文件的名字,用一个类去管理其他的类的进程,尽量有意义并且唯一;
-        最后： (new yourclass)->main()来运行你的代码;
-
+    使用方法：
+    继承此类重写run方法，在重写时,在循环里面调用parent::run();
+    指定pid文件的名字,用一个类去管理其他的类的进程,尽量有意义并且唯一;
+    最后： (new yourclass)->main(\$argv)来运行你的代码;
+    php your-phpfile start task_name      :启动当前脚本并设置tsak_name
+    php any-your-phpfile restart task_name:重新启动task_name
+    php any-your-phpfile stop task_name   :停止 task_name
+    php any-your-phpfile stat task_name   :输出进程号和进程名称task_name
+    php any-your-phpfile list 任意参数     :列出正在执行的类名task_name
 DOC;
 
     }
@@ -115,19 +119,23 @@ DOC;
      */
     public function main($argv) {
 
-        if (count($argv) < 3) {
-            $this->help("使用方法 :");
-            exit();
-        }
 
-        if(isset($argv[2])) {
-            $this->pidfile = __DIR__ . '/' . $argv[2] . ".pid";
+            if (count($argv) < 3) {
+                $this->help("使用方法 :");
+                exit();
+            }
+
+        if (isset($argv[2])) {
+            $this->pidfile = self::PID_DIR . $argv[2] . ".pid";
+            $this->pidname = $argv[2];
         }
 
         if ($argv[1] === 'stop') {
             $this->stop();
         } else if ($argv[1] === 'start') {
             $this->start();
+        } else if ($argv[1] === 'list') {
+            $this->list_pid();
         } else if ($argv[1] === 'restart') {
             $this->restart();
         } else if ($argv[1] === 'stat') {
@@ -148,25 +156,49 @@ DOC;
         switch ($signo) {
             case SIGHUP :
                 print "\n------------运行状态------------\n";
-                print "PID : " . file_get_contents($this->pidfile) . "\n";
-                print "-----------------------------------\n";
+                print "PID : " . file_get_contents($this->pidfile . '.pid') . "\n";
+                print "CLASS_NAME : " . $this->child_class . "\n";
+                print "PROCESS_NAME : " . $this->process_name . $this->pidname . "\n";
+                print "________________________________\n";
                 break;
             case SIGTERM:
-                posix_kill(file_get_contents($this->pidfile), SIGKILL);
+                posix_kill(file_get_contents($this->pidfile . '.pid'), SIGKILL);
                 break;
             default :
               ;
         }
     }
+
+    private function list_pid() {
+        print "runnig class list：\n";
+        foreach (glob(self::PID_DIR."*.pid") as $_file) {
+            $arr = explode("/", $_file);
+            $pidfile = $arr[count($arr) - 1];
+            $pidname = str_replace('.pid', '', $pidfile);
+            print "\033[32m$pidname\n";
+        }
+        print "\033[0m";
+
+    }
 }
-class demonT extends Demon {
+//useage:
+class demoT extends Demon {
+    /**
+     * @overwrite run 
+     */
     protected function run() {
         while (true) {
             parent::run();
-            echo "hello \n";
+            //do something you want
             sleep(5);
         }
     }
 }
 
-(new demonT())->main($argv);
+(new demoT())->main($argv);
+
+// php Demon.php start demoT
+// php Demon.php stat demoT
+// php Demon.php restart demoT
+// php Demon.php stop demoT
+// php Demon.php list anyparam
