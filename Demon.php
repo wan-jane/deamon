@@ -1,9 +1,5 @@
 <?php
-/**
- * User: gengkang
- * Date: 16-7-19
- * Time: 下午3:41
- */
+
 ini_set('default_socket_timeout', -1);
 
 /**
