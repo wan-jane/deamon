@@ -126,7 +126,9 @@ DOC;
             $this->pidfile = $this->pid_dir . $argv[2] . ".pid";
             $this->pidname = $argv[2];
         } else {
-            $class_name = str_replace('.php', '', $argv[0]);
+            $arr = explode("/",  $argv[0]);
+            $class_name = $arr[count($arr) - 1];
+            $class_name = str_replace('.php', '', $class_name);
             $this->pidfile = $this->pid_dir . $class_name . ".pid";
             $this->pidname = $class_name;
         }
