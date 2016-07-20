@@ -4,7 +4,7 @@
 ini_set('default_socket_timeout', -1);
 
 /**
- * Class Demon
+ * Class Task
  */
 abstract class Task {
     /* config */
@@ -44,7 +44,6 @@ abstract class Task {
             posix_setuid(self::uid);
             posix_setgid(self::gid);
             cli_set_process_title($this->process_name . $this->pidname);
-            //pcntl_signal(SIGKILL, [$this, 'signoH']);
             pcntl_signal(SIGHUP, [$this, 'signoH']);
             pcntl_signal(SIGTERM, [$this, 'signoH']);
             pcntl_signal(SIGCHLD, [$this, 'signoH']);
