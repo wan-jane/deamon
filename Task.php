@@ -2,7 +2,7 @@
 /**
  */
 ini_set('default_socket_timeout', -1);
-
+date_default_timezone_set("Asia/Shanghai");
 /**
  * Class Task
  */
@@ -17,15 +17,18 @@ abstract class Task {
 
     private $pid_dir = __DIR__ . '/';
 
-    public $pidfile;
+    private $pidfile;
 
-    public $pidname;
+    private $pidname;
+
+    private $start_time;
 
     /**
+     * @param $restart bool
      * @return int
      */
-    private function daemon() {
-        if (file_exists($this->pidfile)) {
+    private function daemon($restart = false) {
+        if (file_exists($this->pidfile) && !$restart) {
             echo "The file $this->pidfile exists.\n";
             exit();
         }
@@ -36,21 +39,30 @@ abstract class Task {
             // we are the parent
             exit($pid);
         } else {
-            // we are the child
-            $i = file_put_contents($this->pidfile, getmypid());
-            if ($i === false) {
-                exit("无法写入pid文件！");
+            $pid2 = pcntl_fork();
+            if ($pid2 == -1) {
+                die('could not fork');
+            } else if ($pid2) {
+                // we are the parent
+                exit($pid2);
+            } else {
+                // we are the child
+                $i = file_put_contents($this->pidfile, posix_getpid());
+                if ($i === false) {
+                    exit("无法写入pid文件！");
+                }
+                posix_setuid(self::uid);
+                posix_setgid(self::gid);
+                cli_set_process_title($this->process_name . $this->pidname);
+                pcntl_signal(SIGHUP, [$this, 'signoH']);
+                pcntl_signal(SIGTERM, [$this, 'signoH']);
+                pcntl_signal(SIGCHLD, [$this, 'signoH']);
+                pcntl_signal(SIGQUIT, [$this, 'signoH']);
+                pcntl_signal(SIGINT, [$this, 'signoH']);
+                pcntl_signal(SIGUSR1, [$this, 'signoH']);
+                $this->start_time = time();
+                return (getmypid());
             }
-            posix_setuid(self::uid);
-            posix_setgid(self::gid);
-            cli_set_process_title($this->process_name . $this->pidname);
-            pcntl_signal(SIGHUP, [$this, 'signoH']);
-            pcntl_signal(SIGTERM, [$this, 'signoH']);
-            pcntl_signal(SIGCHLD, [$this, 'signoH']);
-            pcntl_signal(SIGQUIT, [$this, 'signoH']);
-            pcntl_signal(SIGINT, [$this, 'signoH']);
-            pcntl_signal(SIGUSR1, [$this, 'signoH']);
-            return (getmypid());
         }
     }
 
@@ -64,14 +76,13 @@ abstract class Task {
     private function restart() {
         $this->stop();
         $this->start();
-        print "重启成功！\n";
     }
 
     /**
-     *
+     * @param $restart
      */
-    private function start() {
-        $pid = $this->daemon();
+    private function start($restart = false) {
+        $pid = $this->daemon($restart);
         $this->run();
     }
 
@@ -92,7 +103,6 @@ abstract class Task {
     private function help($proc) {
         printf("%s php your-class-name.php start|stop|restart|stat|list|help taskname\n", $proc);
         print <<<DOC
-    使用方法：
     继承此类重写run方法，在重写时,在循环里面调用parent::run();
     指定pid文件的名字,用来管理stop|stat|list)进程,要求有意义并且唯一;
     最后： (new yourclass)->main(\$argv)来运行你的代码;
@@ -105,14 +115,15 @@ abstract class Task {
 DOC;
 
     }
+
     /**
      * @param $argv
      */
     public function main($argv) {
 
         if (count($argv) < 2) {
-                $this->help("使用方法 :");
-                exit();
+            $this->help("使用方法 :");
+            exit();
         }
 
         $this->pid_dir = sys_get_temp_dir() . '/php_task_pid/';
@@ -121,16 +132,11 @@ DOC;
             mkdir($this->pid_dir);
         }
 
-        if (isset($argv[2])) {
-            $this->pidfile = $this->pid_dir . $argv[2] . ".pid";
-            $this->pidname = $argv[2];
-        } else {
-            $arr = explode("/",  $argv[0]);
-            $class_name = $arr[count($arr) - 1];
-            $class_name = str_replace('.php', '', $class_name);
-            $this->pidfile = $this->pid_dir . $class_name . ".pid";
-            $this->pidname = $class_name;
-        }
+        $arr = explode("/", $argv[0]);
+        $class_name = $arr[count($arr) - 1];
+        $class_name = str_replace('.php', '', $class_name);
+        $this->pidfile = $this->pid_dir . $class_name . ".pid";
+        $this->pidname = $class_name;
 
         if ($argv[1] === 'stop') {
             $this->stop();
@@ -148,6 +154,7 @@ DOC;
     }
 
     private function stat() {
+
         $_pid = trim(shell_exec("ps -ef | grep \"{$this->process_name}{$this->pidname}\" | grep -v \"grep\" |awk '{print $2}'"));
 
         if (!$_pid) {
@@ -163,36 +170,51 @@ DOC;
                 posix_kill($_pid, SIGHUP);
                 file_put_contents($this->pidfile, $_pid);
             }
-            print "\n---如果没有看到绿色的进程状态，说明已经挂了---\n";
         } else {
             posix_kill($_pid, SIGHUP);
             file_put_contents($this->pidfile, $_pid);
-            print "\n-------------进程没有启动-----------\n";
         }
+        sleep(2);
+        $stat = file_get_contents('stat.txt');
+
+        print "\e[32m" . $stat . "\n";
+        print "\e[0m";
+        unlink('stat.txt');
     }
 
+    private function getLogFile() {
+        return date("Y-m-d-H-i-s-")."log.txt";
+    }
     /**
      * @param $signo
      */
     public function signoH($signo) {
         switch ($signo) {
             case SIGHUP :
-                print "\n\e[32m------------运行状态------------\n";
-                print "PID : " . file_get_contents($this->pidfile) . "\n";
-                print "CLASS_NAME : " . $this->pidname . "\n";
-                print "PROCESS_NAME : " . $this->process_name . $this->pidname . "\n";
-                print "________________________________\n";
-                print "\e[0m";
+                $pid =posix_getpid();
+                $pidname = cli_get_process_title();
+                $start_time = date('Y-m-d H:i:s', $this->start_time);
+                $stat = <<<STAT
+-------------运行状态-----------
+PID : $pid
+CLASS_NAME : {$this->pidname}
+PROCESS_NAME : $pidname 
+START_TIME : $start_time 
+-------------------------------
+
+STAT;
+
+                file_put_contents('stat.txt', $stat);
                 break;
             case SIGTERM:
-            default :
-              ;
+                exit;
+            default : ;
         }
     }
 
     private function list_pid() {
         print "runnig class list：\n";
-        foreach (glob($this->pid_dir."*.pid") as $_file) {
+        foreach (glob($this->pid_dir . "*.pid") as $_file) {
             $arr = explode("/", $_file);
             $pidfile = $arr[count($arr) - 1];
             $pidname = str_replace('.pid', '', $pidfile);
