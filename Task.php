@@ -149,10 +149,21 @@ DOC;
     }
 
     private function stat() {
+         $_pid = shell_exec("ps -ef | grep \"{$this->pidname}\" | grep -v grep | awk '{print $2}'");
+
         if (is_file($this->pidfile)) {
-            posix_kill(file_get_contents($this->pidfile), SIGHUP);
+            $pid_from_file = file_get_contents($this->pidfile);
+            if ($_pid == $pid_from_file) {
+                posix_kill($pid_from_file, SIGHUP);
+            } else {
+                posix_kill($_pid, SIGHUP);
+                file_put_contents($this->pidfile, $_pid);
+            }
+            print "\n---如果没有看到绿色的进程状态，说明已经挂了---\n";
         } else {
-            print "\n-------------指定进程没有启动-----------\n";
+            posix_kill($_pid, SIGHUP);
+            file_put_contents($this->pidfile, $_pid);
+            print "\n-------------进程没有启动-----------\n";
         }
     }
 
