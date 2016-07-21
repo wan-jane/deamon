@@ -149,7 +149,12 @@ DOC;
     }
 
     private function stat() {
-         $_pid = shell_exec("ps -ef | grep \"{$this->pidname}\" | grep -v grep | awk '{print $2}'");
+        $_pid = trim(shell_exec("ps -ef | grep \"{$this->process_name}{$this->pidname}\" | grep -v \"grep\" |awk '{print $2}'"));
+
+        if (!$_pid) {
+            $this->stop();
+            exit("\n进程已停止\n");
+        }
 
         if (is_file($this->pidfile)) {
             $pid_from_file = file_get_contents($this->pidfile);
